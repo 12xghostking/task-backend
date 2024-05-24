@@ -44,139 +44,172 @@ app.get('/', (req, res) => {
   res.send('Hello, World!');
 });
 app.post('/signup', (req, res) => {
-    const { name, email, password, role } = req.body;
-  
-    // Check if an admin already exists
-    if (role === 'admin') {
-      connection.query(
-        'SELECT * FROM users WHERE role = ?',
-        [role],
-        (error, results) => {
-          if (error) {
-            console.error('Error checking admin:', error);
-            res.status(500).json({ message: 'Internal Server Error' });
-          } else {
-            if (results.length > 0) {
-              res.status(400).json({ message: 'Admin already exists' });
-            } else {
-              createUser();
-            }
-          }
-        }
-      );
-    } else {
-      createUser();
-    }
-  
-    // Function to create the user
-    function createUser() {
-      // Hash the password
-      bcrypt.hash(password, 10, (err, hashedPassword) => {
-        if (err) {
-          console.error('Error hashing password:', err);
-          res.status(500).json({ message: 'Internal Server Error' });
-          return;
-        }
-  
-        // Insert the user into the database
-        const insertQuery = 'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)';
-        connection.query(insertQuery, [name, email, hashedPassword, role], (err, result) => {
-          if (err) {
-            console.error('Error creating user:', err);
-            res.status(500).json({ message: 'Internal Server Error' });
-            return;
-          }
-          res.status(201).json({ message: 'User created successfully' });
-        });
-      });
-    }
-  });
-  
-  app.post('/login', (req, res) => {
-    const { email, password } = req.body;
-  
-    // Perform database query to retrieve the user based on the provided email
+  const { name, email, password, role } = req.body;
+
+  // Check if an admin already exists
+  if (role === 'admin') {
     connection.query(
-      'SELECT * FROM users WHERE email = ?',
-      [email],
+      'SELECT * FROM users WHERE role = ?',
+      [role],
       (error, results) => {
         if (error) {
-          res.status(500).json({ error: 'Internal server error' });
+          console.error('Error checking admin:', error);
+          res.status(500).json({ message: 'Internal Server Error' });
         } else {
           if (results.length > 0) {
-            const user = results[0];
-            const role = user.role; // Retrieve the role from the user record
-            const name = user.name; // Retrieve the name from the user record
-  
-            // Compare the provided password with the hashed password stored in the database
-            bcrypt.compare(password, user.password, (err, match) => {
-              if (match) {
-                // Passwords match, authentication successful
-                res.status(200).json({ role, name }); // Send the role and name back to the frontend
-              } else {
-                // Passwords don't match, authentication failed
-                res.status(401).json({ error: 'Invalid credentials' });
-              }
-            });
+            res.status(400).json({ message: 'Admin already exists' });
           } else {
-            // User not found with the provided email
-            res.status(401).json({ error: 'Invalid credentials' });
+            createUser();
           }
         }
       }
     );
-  });
-  app.get('/notifications/:username', (req, res) => {
-    const username = req.params.username;
-    const selectQuery = 'SELECT * FROM notifications WHERE recipient = ?';
-    connection.query(selectQuery, [username], (error, results) => {
-      if (error) {
-        console.error('Error fetching notifications:', error);
-        res.status(500).json({ message: 'Internal Server Error' });
-      } else {
-        res.status(200).json(results);
-      }
-    });
-  });
-  
-  app.post('/notifications', (req, res) => {
-    const { recipient, notificationText } = req.body;
-  
-    const insertQuery = 'INSERT INTO notifications (recipient, notificationText) VALUES (?, ?)';
-    connection.query(insertQuery, [recipient, notificationText], (err, result) => {
-      if (err) {
-        console.error('Error creating notification:', err);
-        res.status(500).json({ message: 'Internal Server Error' });
-      } else {
-        res.status(201).json({ message: 'Notification sent successfully' });
-      }
-    });
-  });
-  
+  } else {
+    createUser();
+  }
 
-  app.get('/users', (req, res) => {
-    connection.query('SELECT * FROM users WHERE role = ?', ['user'], (error, results) => {
-      if (error) {
-        console.error('Error fetching users:', error);
+  // Function to create the user
+  function createUser() {
+    // Hash the password
+    bcrypt.hash(password, 10, (err, hashedPassword) => {
+      if (err) {
+        console.error('Error hashing password:', err);
         res.status(500).json({ message: 'Internal Server Error' });
-      } else {
-        res.status(200).json(results);
+        return;
       }
+
+      // Insert the user into the database
+      const insertQuery = 'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)';
+      connection.query(insertQuery, [name, email, hashedPassword, role], (err, result) => {
+        if (err) {
+          console.error('Error creating user:', err);
+          res.status(500).json({ message: 'Internal Server Error' });
+          return;
+        }
+        res.status(201).json({ message: 'User created successfully' });
+      });
+    });
+  }
+});
+app.put('/tasks/:id/comment', (req, res) => {
+  const { id } = req.params;
+  const { comment } = req.body;
+
+  connection.query('SELECT name, assignedMembers FROM tasks WHERE id = ?', [id], (error, results) => {
+    if (error) {
+      return res.status(500).json({ error });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const { name, assignedMembers } = results[0];
+
+    connection.query('INSERT INTO comments (comment, name, commentfrom) VALUES (?, ?, ?)', [comment, name, assignedMembers], (error) => {
+      if (error) {
+        return res.status(500).json({ error });
+      }
+
+      res.status(200).json({ message: 'Comment added successfully' });
     });
   });
-  app.delete('/notifications/:id', (req, res) => {
-    const notificationId = req.params.id;
-    const deleteQuery = 'DELETE FROM notifications WHERE id = ?';
-    connection.query(deleteQuery, [notificationId], (error, result) => {
+});
+app.get('/comments', (req, res) => {
+  connection.query('SELECT * FROM comments', (error, results) => {
+    if (error) {
+      return res.status(500).json({ error });
+    }
+
+    res.status(200).json(results);
+  }
+  );
+});
+app.post('/login', (req, res) => {
+  const { email, password } = req.body;
+
+  // Perform database query to retrieve the user based on the provided email
+  connection.query(
+    'SELECT * FROM users WHERE email = ?',
+    [email],
+    (error, results) => {
       if (error) {
-        console.error('Error removing notification:', error);
-        res.status(500).json({ message: 'Internal Server Error' });
+        res.status(500).json({ error: 'Internal server error' });
       } else {
-        res.status(200).json({ message: 'Notification removed successfully' });
+        if (results.length > 0) {
+          const user = results[0];
+          const role = user.role; // Retrieve the role from the user record
+          const name = user.name; // Retrieve the name from the user record
+
+          // Compare the provided password with the hashed password stored in the database
+          bcrypt.compare(password, user.password, (err, match) => {
+            if (match) {
+              // Passwords match, authentication successful
+              res.status(200).json({ role, name }); // Send the role and name back to the frontend
+            } else {
+              // Passwords don't match, authentication failed
+              res.status(401).json({ error: 'Invalid credentials' });
+            }
+          });
+        } else {
+          // User not found with the provided email
+          res.status(401).json({ error: 'Invalid credentials' });
+        }
       }
-    });
+    }
+  );
+});
+app.get('/notifications/:username', (req, res) => {
+  const username = req.params.username;
+  const selectQuery = 'SELECT * FROM notifications WHERE recipient = ?';
+  connection.query(selectQuery, [username], (error, results) => {
+    if (error) {
+      console.error('Error fetching notifications:', error);
+      res.status(500).json({ message: 'Internal Server Error' });
+    } else {
+      res.status(200).json(results);
+    }
   });
-  // GET all tasks
+});
+
+app.post('/notifications', (req, res) => {
+  const { recipient, notificationText } = req.body;
+
+  const insertQuery = 'INSERT INTO notifications (recipient, notificationText) VALUES (?, ?)';
+  connection.query(insertQuery, [recipient, notificationText], (err, result) => {
+    if (err) {
+      console.error('Error creating notification:', err);
+      res.status(500).json({ message: 'Internal Server Error' });
+    } else {
+      res.status(201).json({ message: 'Notification sent successfully' });
+    }
+  });
+});
+
+
+app.get('/users', (req, res) => {
+  connection.query('SELECT * FROM users WHERE role = ?', ['user'], (error, results) => {
+    if (error) {
+      console.error('Error fetching users:', error);
+      res.status(500).json({ message: 'Internal Server Error' });
+    } else {
+      res.status(200).json(results);
+    }
+  });
+});
+app.delete('/notifications/:id', (req, res) => {
+  const notificationId = req.params.id;
+  const deleteQuery = 'DELETE FROM notifications WHERE id = ?';
+  connection.query(deleteQuery, [notificationId], (error, result) => {
+    if (error) {
+      console.error('Error removing notification:', error);
+      res.status(500).json({ message: 'Internal Server Error' });
+    } else {
+      res.status(200).json({ message: 'Notification removed successfully' });
+    }
+  });
+});
+// GET all tasks
 app.get('/tasks', (req, res) => {
   connection.query('SELECT * FROM tasks', (error, results) => {
     if (error) {
@@ -200,13 +233,14 @@ app.get('/tasks/:assignedMember', (req, res) => {
 });
 // POST a new task
 app.post('/tasks', (req, res) => {
-  const { name, deadline, assignedMembers, notes, completed } = req.body;
+  const { name, deadline, assignedMembers, notes, completed, priority } = req.body;
   const task = {
     name,
     deadline,
     assignedMembers,
     notes,
     completed,
+    priority
   };
 
   connection.query('INSERT INTO tasks SET ?', task, (error, result) => {
@@ -302,7 +336,29 @@ app.post('/files/upload', upload.single('file'), (req, res) => {
         console.error('Error saving file details:', error);
         return res.status(500).json({ message: 'Internal Server Error' });
       }
-      
+
+      return res.status(200).json({ message: 'File uploaded successfully' });
+    }
+  );
+});
+app.post('/files/upload/user', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  const { task, uploadedby } = req.body;
+  const { filename, path: filepath } = req.file;
+
+  // Save the file details to the MySQL database
+  connection.query(
+    'INSERT INTO userfiles (filename, filepath, task,uploadedby) VALUES (?, ?, ?,?)',
+    [filename, filepath, task, uploadedby],
+    (error, result) => {
+      if (error) {
+        console.error('Error saving file details:', error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+      }
+
       return res.status(200).json({ message: 'File uploaded successfully' });
     }
   );
@@ -314,6 +370,22 @@ app.get('/files/:recipientName', (req, res) => {
   connection.query(
     'SELECT * FROM files WHERE recipient = ?',
     [recipientName],
+    (error, files) => {
+      if (error) {
+        console.error('Error fetching shared files:', error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+      }
+
+      return res.status(200).json(files);
+    }
+  );
+});
+app.get('/files', (req, res) => {
+
+
+  // Query the files table based on the recipient's name
+  connection.query(
+    'SELECT * FROM userfiles',
     (error, files) => {
       if (error) {
         console.error('Error fetching shared files:', error);
@@ -338,6 +410,6 @@ app.get('/files/download/:filename', (req, res) => {
   });
 });
 
-  
+
 // Start the server
 app.listen(port);
